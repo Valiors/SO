@@ -4,6 +4,7 @@ MIMUW University Assignments - Operating Systems (MINIX + assembly)
 Lab part of the course consits of 6 problems - 2 programs in NASM and 4 tasks in MINIX 3 consisting of modyfing various parts of drivers, servers and kernel.
 
 **Task 1**
+
 Program in NASM that reads UTF-8 encoded string from stdin, transforms every Unicode code point p into code point (W(p - 0x80) + 0x80) modulo 0x10FF80 and outputs results to stdout, also in UTF-8.
 
 W(x) = a_n * x^n + ... + a_1 * x + a_0
