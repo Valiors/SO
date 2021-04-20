@@ -20,9 +20,8 @@ UTF_NEXT_BYTE_UNICODE_BIT_PATTERN equ 0x3F
 NEXT_OUTPUT_BYTE equ 0x80
 SHIFT_OUT equ 6
 
-; ------------------------ DATA SECTION ------------------------
-section .data
-
+; ------------------------ READ-ONLY DATA SECTION ------------------------
+section .rodata
 COEFFICIENT_BASE dq 10
 MOD dq 0x10FF80
 NEXT_BYTES_COUNT_IN_BRACKET dq 0, 1, 2, 3 ; How many bytes to read, except for the first one, for 1/2/3/4 UTF-8 bracket.
