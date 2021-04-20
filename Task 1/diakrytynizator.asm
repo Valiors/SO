@@ -1,5 +1,4 @@
-; ------------------------ DATA SECTION ------------------------
-section .data
+; ------------------------ CONSTANTS ------------------------
 NULL equ 0 ; End of string.
 EXIT_SUCCESS equ 0
 EXIT_ERROR equ 1
@@ -20,6 +19,9 @@ UTF_NEXT_BYTE_UNICODE_BITS_COUNT equ 6 ; How many bits of 2nd, 3rd, 4th byte of 
 UTF_NEXT_BYTE_UNICODE_BIT_PATTERN equ 0x3F
 NEXT_OUTPUT_BYTE equ 0x80
 SHIFT_OUT equ 6
+
+; ------------------------ DATA SECTION ------------------------
+section .data
 
 COEFFICIENT_BASE dq 10
 MOD dq 0x10FF80
