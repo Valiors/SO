@@ -20,4 +20,4 @@ Write a program in NASM that allows running n concurrent instances of _uint64_t 
 
 **Task 3**
 
-Add syscall _int negateexit(int negate)_ to MINIX's process manager (PM), such that, when called with _negate != 0_, will apply logical NOT to the calling process's exit code. If _negate == 0_, restore the original exit code. Forked processes inherit behavior of parent. Subsequent calls of negateexit do not influence behavior of children. Processes terminated by signals should not have their exit codes changed.
+Add syscall _int negateexit(int negate)_ to MINIX's process manager (PM), such that, when called with _negate != 0_, will apply logical NOT to the calling process's exit code. If _negate == 0_, restore the original exit code. Forked processes inherit behavior of parent. Subsequent negateexit calls do not influence behavior of children. Processes terminated by signals should not have their exit codes changed.
