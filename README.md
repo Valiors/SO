@@ -23,4 +23,5 @@ Write a program in NASM that allows running n concurrent instances of _uint64_t 
 Add syscall _int negateexit(int negate)_ to MINIX's process manager (PM), such that, when called with _negate != 0_, will apply logical NOT to the calling process's exit code. If _negate == 0_, restore the original exit code. Forked processes inherit behavior of parent. Subsequent negateexit calls do not influence behavior of children. Processes terminated by signals should not have their exit codes changed.
 
 **Task 4**
+
 Modify MINIX kernel, sched server and add syscall _int setbid(int bid)_ to allow user programs to choose alternative scheduling algorithm called unique lowest bid. Every process can bid a postivie number. The one with the lowest unique bid is chosen to run. If there are no unique bids, any of the highgest bidders is chosen. Processes scheduled with this algorithm have priority _AUCTION_Q = 8_. Calling _setbid(0)_ restores default scheduling behavior.
