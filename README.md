@@ -25,3 +25,10 @@ Add syscall _int negateexit(int negate)_ to MINIX's process manager (PM), such t
 **Task 4**
 
 Modify MINIX kernel, sched server and add syscall _int setbid(int bid)_ to allow user programs to choose alternative scheduling algorithm called unique lowest bid. Every process can bid a postivie number. The one with the lowest unique bid is chosen to run. If there are no unique bids, any of the highest bidders is chosen. Processes scheduled with this algorithm have priority _AUCTION_Q = 8_. Calling _setbid(0)_ restores default scheduling behavior.
+
+**Task 5**
+
+Modify Minix File System (MFS) to generate errors in three ways:
+A) Add _1_ to every 3rd byte that is written to a file by MFS.
+B) Let every 3rd _chmod_ syscall modify S_IWOTH bit of file permissions.
+C) If there's a directory named _debug_ in the same directory as file being removed, move the file to debug instead of removing it.
