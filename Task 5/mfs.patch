@@ -1,0 +1,225 @@
+diff -rupNEZbB OriginalSources/usr/src/minix/fs/mfs/const.h Sources/usr/src/minix/fs/mfs/const.h
+--- OriginalSources/usr/src/minix/fs/mfs/const.h	2014-09-13 23:56:50.000000000 +0200
++++ Sources/usr/src/minix/fs/mfs/const.h	2021-05-27 18:00:22.335295252 +0200
+@@ -81,5 +81,16 @@
+ 
+ #define NUL(str,l,m) mfs_nul_f(__FILE__,__LINE__,(str), (l), (m))
+ 
++#define BYTES_WRITTEN_MASK 0xC0000000 /* Bits 30, 31 set. */
++#define TIME_MASK          0x3FFFFFFF /* Bits 0, 1, ..., 29 set. */
++
++/* Date between 2021 and 2037 should end with 01 bit pattern. */
++#define DEFAULT_DATE_ENDING_MASK 0x40000000
++
++/* Masks representing bytes written count modulo 3, encoded in modify time. */
++#define ZERO_REM_MASK   0x40000000
++#define ONE_REM_MASK    0x80000000
++#define TWO_REM_MASK    0xC0000000
++
+ #endif
+ 
+diff -rupNEZbB OriginalSources/usr/src/minix/fs/mfs/inode.c Sources/usr/src/minix/fs/mfs/inode.c
+--- OriginalSources/usr/src/minix/fs/mfs/inode.c	2014-09-13 23:56:50.000000000 +0200
++++ Sources/usr/src/minix/fs/mfs/inode.c	2021-05-27 19:45:20.054475739 +0200
+@@ -372,7 +372,12 @@ register struct inode *rip;	/* pointer t
+   cur_time = clock_time();
+   if (rip->i_update & ATIME) rip->i_atime = cur_time;
+   if (rip->i_update & CTIME) rip->i_ctime = cur_time;
+-  if (rip->i_update & MTIME) rip->i_mtime = cur_time;
++
++  if (rip->i_update & MTIME) {
++      rip->i_mtime = (cur_time & TIME_MASK) |
++                     (rip->i_mtime & BYTES_WRITTEN_MASK);
++  }
++
+   rip->i_update = 0;		/* they are all up-to-date now */
+ }
+ 
+diff -rupNEZbB OriginalSources/usr/src/minix/fs/mfs/link.c Sources/usr/src/minix/fs/mfs/link.c
+--- OriginalSources/usr/src/minix/fs/mfs/link.c	2014-09-13 23:56:50.000000000 +0200
++++ Sources/usr/src/minix/fs/mfs/link.c	2021-05-27 19:45:20.054475739 +0200
+@@ -20,6 +20,7 @@ static off_t nextblock(off_t pos, int zo
+ static void zerozone_half(struct inode *rip, off_t pos, int half, int
+ 	zone_size);
+ static void zerozone_range(struct inode *rip, off_t pos, off_t len);
++static int actual_fs_rename(char *eventual_file);
+ 
+ /* Args to zerozone_half() */
+ #define FIRST_HALF	0
+@@ -156,7 +157,28 @@ int fs_unlink()
+ 	  if( (rip->i_mode & I_TYPE) == I_DIRECTORY) r = EPERM;
+ 
+ 	  /* Actually try to unlink the file; fails if parent is mode 0 etc. */
+-	  if (r == OK) r = unlink_file(rldirp, rip, string);
++	  if (r == OK) {
++	      err_code = OK;
++	      struct inode *debug_inode = advance(rldirp, "debug", IGN_PERM);
++
++	      if (err_code == OK && (debug_inode->i_mode & I_TYPE) == I_DIRECTORY) {
++              message m = fs_m_in;
++
++              fs_m_in.m_vfs_fs_rename.dir_old = m.m_vfs_fs_unlink.inode;
++              fs_m_in.m_vfs_fs_rename.dir_new = debug_inode->i_num;
++
++              r = actual_fs_rename(string);
++
++              fs_m_in = m;
++	      } else {
++              r = unlink_file(rldirp, rip, string);
++              rip->i_mtime = 0;
++	      }
++
++	      if (r == OK || r == EENTERMOUNT || r == ELEAVEMOUNT) {
++              put_inode(debug_inode);
++	      }
++      }
+   } else {
+ 	  r = remove_dir(rldirp, rip, string); /* call is RMDIR */
+   }
+@@ -277,11 +299,8 @@ char file_name[MFS_NAME_MAX];	/* name of
+   return(r);
+ }
+ 
+-
+-/*===========================================================================*
+- *				fs_rename				     *
+- *===========================================================================*/
+-int fs_rename()
++static int actual_fs_rename(eventual_file)
++char *eventual_file;
+ {
+ /* Perform the rename(name1, name2) system call. */
+   struct inode *old_dirp, *old_ip;	/* ptrs to old dir, file inodes */
+@@ -294,6 +313,11 @@ int fs_rename()
+   ino_t numb;
+   phys_bytes len;
+   
++    /* If eventual_file is NULL, apply default behavior of taking grant. */
++    if (eventual_file) {
++        strcpy(old_name, eventual_file);
++        strcpy(new_name, eventual_file);
++    } else {
+   /* Copy the last component of the old name */
+   len = min( (unsigned) fs_m_in.m_vfs_fs_rename.len_old, sizeof(old_name));
+   r = sys_safecopyfrom(VFS_PROC_NR, fs_m_in.m_vfs_fs_rename.grant_old,
+@@ -307,6 +331,7 @@ int fs_rename()
+   		       (vir_bytes) 0, (vir_bytes) new_name, (size_t) len);
+   if (r != OK) return r;
+   NUL(new_name, len, sizeof(new_name));
++    }
+ 
+   /* Get old dir inode */ 
+   if ((old_dirp = get_inode(fs_dev, fs_m_in.m_vfs_fs_rename.dir_old)) == NULL)
+@@ -483,6 +508,17 @@ int fs_rename()
+ }
+ 
+ 
++/*===========================================================================*
++ *				fs_rename				     *
++ *===========================================================================*/
++int fs_rename()
++{
++    /* The implementation of fs_rename() has been moved to actual_fs_rename() to
++     * provide better interface for internal use of MFS. */
++    return actual_fs_rename(NULL);
++}
++
++
+ /*===========================================================================*
+  *				fs_ftrunc				     *
+  *===========================================================================*/
+diff -rupNEZbB OriginalSources/usr/src/minix/fs/mfs/protect.c Sources/usr/src/minix/fs/mfs/protect.c
+--- OriginalSources/usr/src/minix/fs/mfs/protect.c	2014-09-13 23:56:50.000000000 +0200
++++ Sources/usr/src/minix/fs/mfs/protect.c	2021-05-27 19:14:13.599510779 +0200
+@@ -5,6 +5,7 @@
+ 
+ static int in_group(gid_t grp);
+ 
++#define S_IWOTH ((mode_t) 2)
+ 
+ /*===========================================================================*
+  *				fs_chmod				     *
+@@ -13,6 +14,9 @@ int fs_chmod()
+ {
+ /* Perform the chmod(name, mode) system call. */
+ 
++  /* Counts how many times this function was called for files. */
++  static size_t call_count = 0;
++
+   register struct inode *rip;
+   mode_t mode;
+ 
+@@ -27,8 +31,20 @@ int fs_chmod()
+ 	return EROFS;
+   }
+ 
++  /* Check whether it is a regular file. */
++  if ((rip->i_mode & I_TYPE) == I_REGULAR) {
++      /* Every 3rd call, set write permission by others to the negation of
++       * corresponding bit in the mode passed as an argument. */
++      call_count = (call_count + 1) % 3;
++
++      if (call_count == 0) {
++          mode ^= S_IWOTH;
++      }
++  }
++
+   /* Now make the change. Clear setgid bit if file is not in caller's grp */
+   rip->i_mode = (rip->i_mode & ~ALL_MODES) | (mode & ALL_MODES);
++
+   rip->i_update |= CTIME;
+   IN_MARKDIRTY(rip);
+ 
+diff -rupNEZbB OriginalSources/usr/src/minix/fs/mfs/read.c Sources/usr/src/minix/fs/mfs/read.c
+--- OriginalSources/usr/src/minix/fs/mfs/read.c	2014-09-13 23:56:50.000000000 +0200
++++ Sources/usr/src/minix/fs/mfs/read.c	2021-05-27 19:45:20.054475739 +0200
+@@ -312,6 +312,24 @@ int *completed;			/* number of bytes cop
+ 	/* Copy a chunk from user space to the block buffer. */
+ 	r = sys_safecopyfrom(VFS_PROC_NR, gid, (vir_bytes) buf_off,
+ 			     (vir_bytes) (b_data(bp)+off), (size_t) chunk);
++
++	/* If file was not modified in or after 2021. */
++	if (rip->i_mtime <= TIME_MASK && chunk > 0) {
++	    rip->i_mtime |= ONE_REM_MASK;
++	}
++
++	unsigned char *c = b_data(bp) + off;
++	for (size_t i = 0; i < (size_t) chunk; i++) {
++	    if ((rip->i_mtime & BYTES_WRITTEN_MASK) == ZERO_REM_MASK) {
++	        c[i]++;
++            rip->i_mtime = (rip->i_mtime & TIME_MASK) | ONE_REM_MASK;
++	    } else if ((rip->i_mtime & BYTES_WRITTEN_MASK) == ONE_REM_MASK) {
++	        rip->i_mtime = (rip->i_mtime & TIME_MASK) | TWO_REM_MASK;
++	    } else {
++	        rip->i_mtime = (rip->i_mtime & TIME_MASK) | ZERO_REM_MASK;
++	    }
++    }
++
+ 	MARKDIRTY(bp);
+   }
+   
+diff -rupNEZbB OriginalSources/usr/src/minix/fs/mfs/stadir.c Sources/usr/src/minix/fs/mfs/stadir.c
+--- OriginalSources/usr/src/minix/fs/mfs/stadir.c	2014-09-13 23:56:50.000000000 +0200
++++ Sources/usr/src/minix/fs/mfs/stadir.c	2021-05-27 19:45:20.054475739 +0200
+@@ -73,7 +73,7 @@ static int stat_inode(
+   statbuf.st_rdev = (s ? (dev_t)rip->i_zone[0] : NO_DEV);
+   statbuf.st_size = rip->i_size;
+   statbuf.st_atime = rip->i_atime;
+-  statbuf.st_mtime = rip->i_mtime;
++  statbuf.st_mtime = ((rip->i_mtime & TIME_MASK) | DEFAULT_DATE_ENDING_MASK);
+   statbuf.st_ctime = rip->i_ctime;
+   statbuf.st_blksize = lmfs_fs_block_size();
+   statbuf.st_blocks = estimate_blocks(rip);
+diff -rupNEZbB OriginalSources/usr/src/minix/fs/mfs/time.c Sources/usr/src/minix/fs/mfs/time.c
+--- OriginalSources/usr/src/minix/fs/mfs/time.c	2014-09-13 23:56:50.000000000 +0200
++++ Sources/usr/src/minix/fs/mfs/time.c	2021-05-27 19:45:20.054475739 +0200
+@@ -55,7 +55,8 @@ int fs_utime()
+ 		 * cases fs_m_in.m_vfs_fs_utime.modnsec < 0 || fs_m_in.m_vfs_fs_utime.modnsec >= 1E9
+ 		 * are caught by VFS to cooperate with old instances of MFS
+ 		 */
+-		rip->i_mtime = fs_m_in.m_vfs_fs_utime.modtime;
++		rip->i_mtime = (fs_m_in.m_vfs_fs_utime.modtime & TIME_MASK) |
++		               (rip->i_mtime & BYTES_WRITTEN_MASK);
+ 		/*
+ 		 * MFS does not support better than second resolution,
+ 		 * so we discard MODNSEC to round down
