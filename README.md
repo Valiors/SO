@@ -29,6 +29,6 @@ Modify MINIX kernel, sched server and add syscall _int setbid(int bid)_ to allow
 **Task 5**
 
 Modify Minix File System (MFS) to generate errors in three ways:
-A) Add _1_ to every 3rd byte that is written to a file by MFS.
+A) Add 1 to every 3rd byte that is written to a file by MFS.
 B) Let every 3rd _chmod_ syscall modify S_IWOTH bit of file permissions.
 C) If there's a directory named _debug_ in the same directory as file being removed, move the file to debug instead of removing it.
