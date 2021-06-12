@@ -32,3 +32,7 @@ Modify Minix File System (MFS) to generate errors in three ways:
 A) Add 1 to every 3rd byte that is written to a file by MFS.
 B) Let every 3rd _chmod_ syscall modify S_IWOTH bit of file permissions.
 C) If there's a directory named _debug_ in the same directory as file being removed, move the file to debug instead of removing it.
+
+**Task 6**
+
+Write a device driver that imitates a simple queue.
